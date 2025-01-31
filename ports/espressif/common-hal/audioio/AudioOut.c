@@ -24,170 +24,239 @@ static dac_continuous_handle_t _active_handle;
 
 #define INCREMENT_BUF_IDX(idx) ((idx + 1) % (NUM_DMA_BUFFERS + 1))
 
-
-static void audioout_convert_noop(
+static bool audioout_convert_noop(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size <= *out_buffer_size);
-    memcpy(out_buffer, in_buffer, in_buffer_size);
+    *out_buffer = in_buffer;
     *out_buffer_size = in_buffer_size;
+    return false;
 }
 
-static void audioout_convert_u8s_u8m(
+static bool audioout_convert_u8s_u8m(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 2 <= *out_buffer_size);
-    audiosample_convert_u8s_u8m(out_buffer, (uint8_t *)in_buffer, in_buffer_size / 2);
+    bool buffer_changed = false;
+    if (in_buffer_size / 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_u8s_u8m(*out_buffer, (uint8_t *)in_buffer, in_buffer_size / 2);
     *out_buffer_size = in_buffer_size / 2;
+    return buffer_changed;
 }
 
-static void audioout_convert_u8m_u8s(
+static bool audioout_convert_u8m_u8s(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size * 2 <= *out_buffer_size);
-    audiosample_convert_u8m_u8s(out_buffer, (uint8_t *)in_buffer, in_buffer_size);
+    bool buffer_changed = false;
+    if (in_buffer_size * 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size * 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_u8m_u8s(*out_buffer, (uint8_t *)in_buffer, in_buffer_size);
     *out_buffer_size = in_buffer_size * 2;
+    return buffer_changed;
 }
 
-static void audioout_convert_s8m_u8m(
+static bool audioout_convert_s8m_u8m(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size <= *out_buffer_size);
-    audiosample_convert_s8m_u8m(out_buffer, (int8_t *)in_buffer, in_buffer_size);
+    bool buffer_changed = false;
+    if (in_buffer_size > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size);
+        buffer_changed = true;
+    }
+    audiosample_convert_s8m_u8m(*out_buffer, (int8_t *)in_buffer, in_buffer_size);
     *out_buffer_size = in_buffer_size;
+    return buffer_changed;
 }
 
-static void audioout_convert_s8s_u8m(
+static bool audioout_convert_s8s_u8m(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 2 <= *out_buffer_size);
-    audiosample_convert_s8s_u8m(out_buffer, (int8_t *)in_buffer, in_buffer_size / 2);
+    bool buffer_changed = false;
+    if (in_buffer_size / 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_s8s_u8m(*out_buffer, (int8_t *)in_buffer, in_buffer_size / 2);
     *out_buffer_size = in_buffer_size / 2;
+    return buffer_changed;
 }
 
-static void audioout_convert_s8m_u8s(
+static bool audioout_convert_s8m_u8s(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size * 2 <= *out_buffer_size);
-    audiosample_convert_s8m_u8s(out_buffer, (int8_t *)in_buffer, in_buffer_size);
+    bool buffer_changed = false;
+    if (in_buffer_size * 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size * 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_s8m_u8s(*out_buffer, (int8_t *)in_buffer, in_buffer_size);
     *out_buffer_size = in_buffer_size * 2;
+    return buffer_changed;
 }
 
-static void audioout_convert_s8s_u8s(
+static bool audioout_convert_s8s_u8s(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size <= *out_buffer_size);
-    audiosample_convert_s8s_u8s(out_buffer, (int8_t *)in_buffer, in_buffer_size);
+    bool buffer_changed = false;
+    if (in_buffer_size > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size);
+        buffer_changed = true;
+    }
+    audiosample_convert_s8s_u8s(*out_buffer, (int8_t *)in_buffer, in_buffer_size);
     *out_buffer_size = in_buffer_size;
+    return buffer_changed;
 }
 
-static void audioout_convert_u16m_u8m(
+static bool audioout_convert_u16m_u8m(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 2 <= *out_buffer_size);
-    audiosample_convert_u16m_u8m(out_buffer, (uint16_t *)in_buffer, in_buffer_size / 2);
+    bool buffer_changed = false;
+    if (in_buffer_size / 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_u16m_u8m(*out_buffer, (uint16_t *)in_buffer, in_buffer_size / 2);
     *out_buffer_size = in_buffer_size / 2;
+    return buffer_changed;
 }
 
-static void audioout_convert_u16m_u8s(
+static bool audioout_convert_u16m_u8s(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size <= *out_buffer_size);
-    audiosample_convert_u16m_u8s(out_buffer, (uint16_t *)in_buffer, in_buffer_size / 2);
+    bool buffer_changed = false;
+    if (in_buffer_size > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size);
+        buffer_changed = true;
+    }
+    audiosample_convert_u16m_u8s(*out_buffer, (uint16_t *)in_buffer, in_buffer_size / 2);
     *out_buffer_size = in_buffer_size;
+    return buffer_changed;
 }
 
-static void audioout_convert_u16s_u8m(
+static bool audioout_convert_u16s_u8m(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 4 <= *out_buffer_size);
-    audiosample_convert_u16s_u8m(out_buffer, (uint16_t *)in_buffer, in_buffer_size / 4);
+    bool buffer_changed = false;
+    if (in_buffer_size / 4 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 4);
+        buffer_changed = true;
+    }
+    audiosample_convert_u16s_u8m(*out_buffer, (uint16_t *)in_buffer, in_buffer_size / 4);
     *out_buffer_size = in_buffer_size / 4;
+    return buffer_changed;
 }
 
-static void audioout_convert_u16s_u8s(
+static bool audioout_convert_u16s_u8s(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 2 <= *out_buffer_size);
-    audiosample_convert_u16s_u8s(out_buffer, (uint16_t *)in_buffer, in_buffer_size / 4);
+    bool buffer_changed = false;
+    if (in_buffer_size / 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_u16s_u8s(*out_buffer, (uint16_t *)in_buffer, in_buffer_size / 4);
     *out_buffer_size = in_buffer_size / 2;
+    return buffer_changed;
 }
 
-static void audioout_convert_s16m_u8m(
+static bool audioout_convert_s16m_u8m(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 2 <= *out_buffer_size);
-    audiosample_convert_s16m_u8m(out_buffer, (int16_t *)in_buffer, in_buffer_size / 2);
+    bool buffer_changed = false;
+    if (in_buffer_size / 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_s16m_u8m(*out_buffer, (int16_t *)in_buffer, in_buffer_size / 2);
     *out_buffer_size = in_buffer_size / 2;
+    return buffer_changed;
 }
 
-static void audioout_convert_s16m_u8s(
+static bool audioout_convert_s16m_u8s(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size <= *out_buffer_size);
-    audiosample_convert_s16m_u8s(out_buffer, (int16_t *)in_buffer, in_buffer_size / 2);
+    bool buffer_changed = false;
+    if (in_buffer_size > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size);
+        buffer_changed = true;
+    }
+    audiosample_convert_s16m_u8s(*out_buffer, (int16_t *)in_buffer, in_buffer_size / 2);
     *out_buffer_size = in_buffer_size;
+    return buffer_changed;
 }
 
-static void audioout_convert_s16s_u8m(
+static bool audioout_convert_s16s_u8m(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 4 <= *out_buffer_size);
-    audiosample_convert_s16s_u8m(out_buffer, (int16_t *)in_buffer, in_buffer_size / 4);
+    bool buffer_changed = false;
+    if (in_buffer_size / 4 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 4);
+        buffer_changed = true;
+    }
+    audiosample_convert_s16s_u8m(*out_buffer, (int16_t *)in_buffer, in_buffer_size / 4);
     *out_buffer_size = in_buffer_size / 4;
+    return buffer_changed;
 }
 
-static void audioout_convert_s16s_u8s(
+static bool audioout_convert_s16s_u8s(
     void *in_buffer,
     size_t in_buffer_size,
-    uint8_t *out_buffer,
+    uint8_t **out_buffer,
     uint32_t *out_buffer_size) {
 
-    assert(in_buffer_size / 2 <= *out_buffer_size);
-    audiosample_convert_s16s_u8s(out_buffer, (int16_t *)in_buffer, in_buffer_size / 4);
+    bool buffer_changed = false;
+    if (in_buffer_size / 2 > *out_buffer_size) {
+        *out_buffer = malloc(in_buffer_size / 2);
+        buffer_changed = true;
+    }
+    audiosample_convert_s16s_u8s(*out_buffer, (int16_t *)in_buffer, in_buffer_size / 4);
     *out_buffer_size = in_buffer_size / 2;
+    return buffer_changed;
 }
 
 #define CONV_MATCH(bps, sign, ichans, ochans) ((bps & 0xf) | ((sign & 0x1) << 4) | ((ichans & 0x3) << 5) | ((ochans & 0x3) << 7))
@@ -277,11 +346,17 @@ static bool audioout_fill_buffer(audioio_audioout_obj_t *self) {
             return false;
         }
 
-        self->samples_convert(
+        bool buffer_changed;
+        buffer_changed = self->samples_convert(
             raw_sample_buf,
             raw_sample_buf_size,
-            sample_buf,
+            &sample_buf,
             &sample_buf_size);
+
+        if (buffer_changed) {
+            self->scratch_buffer = sample_buf;
+            self->scratch_buffer_size = sample_buf_size;
+        }
     }
 
     if (sample_buf_size > 0) {
