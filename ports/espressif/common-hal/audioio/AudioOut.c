@@ -317,17 +317,17 @@ static bool audioout_fill_buffer(audioio_audioout_obj_t *self) {
         return false;
     }
 
-    self->get_buffer_index = INCREMENT_BUF_IDX(dma_buf_idx);
-
     uint8_t *dma_buf = self->dma_buffers[dma_buf_idx].ptr;
     size_t dma_buf_size = self->dma_buffers[dma_buf_idx].size;
+
+    self->get_buffer_index = INCREMENT_BUF_IDX(dma_buf_idx);
 
     bool single_channel_output = true; // whether or not we have 1 or 2 output channels
     uint8_t channel = 0; // which channel right now?
     uint8_t *raw_sample_buf; // raw audio sample buffer
     uint32_t raw_sample_buf_size; // raw audio sample buffer len
     uint8_t *sample_buf = self->scratch_buffer; // converted audio sample buffer
-    uint32_t sample_buf_size = sizeof(self->scratch_buffer); // converted audio sample buffer len
+    uint32_t sample_buf_size = self->scratch_buffer_size; // converted audio sample buffer len
     size_t bytes_loaded;
     esp_err_t ret;
 
@@ -354,6 +354,9 @@ static bool audioout_fill_buffer(audioio_audioout_obj_t *self) {
             &sample_buf_size);
 
         if (buffer_changed) {
+            if (self->scratch_buffer != NULL) {
+                free(self->scratch_buffer);
+	    }
             self->scratch_buffer = sample_buf;
             self->scratch_buffer_size = sample_buf_size;
         }
@@ -370,14 +373,6 @@ static bool audioout_fill_buffer(audioio_audioout_obj_t *self) {
         }
     }
 
-    if (get_buffer_result == GET_BUFFER_DONE) {
-        if (self->looping) {
-            audiosample_reset_buffer(self->sample, true, 0);
-        } else {
-            common_hal_audioio_audioout_stop(self);
-        }
-    }
-
     sample_buf_size -= bytes_loaded;
     if (sample_buf_size == 0) {
         sample_buf = NULL;
@@ -388,6 +383,17 @@ static bool audioout_fill_buffer(audioio_audioout_obj_t *self) {
     self->sample_buffer = sample_buf;
     self->sample_buffer_size = sample_buf_size;
     self->sample_buffer_result = get_buffer_result;
+
+    if (get_buffer_result == GET_BUFFER_DONE && sample_buf_size == 0) {
+        if (self->looping) {
+            audiosample_reset_buffer(self->sample, true, 0);
+        } else {
+            // TODO: figure out if it is ok to call this here or do we need
+            // to somehow wait for all of the samples to be flushed
+            common_hal_audioio_audioout_stop(self);
+            return false;
+        }
+    }
 
     return true;
 }
@@ -429,13 +435,18 @@ static bool IRAM_ATTR handle_convert_done(dac_continuous_handle_t handle, const 
 }
 
 static void audioout_init(audioio_audioout_obj_t *self) {
+    dac_continuous_digi_clk_src_t clk_src = DAC_DIGI_CLK_SRC_DEFAULT;
+    if (self->freq_hz < 19600) {
+        clk_src = DAC_DIGI_CLK_SRC_APLL;
+    }
+
     dac_continuous_config_t cfg = {
         .chan_mask = self->channel_mask,
         .desc_num = NUM_DMA_BUFFERS,
         .buf_size = DMA_BUFFER_SIZE,
         .freq_hz = self->freq_hz,
         .offset = 0,
-        .clk_src = DAC_DIGI_CLK_SRC_APLL,
+        .clk_src = clk_src,
         .chan_mode = self->channel_mode,
     };
 
@@ -530,6 +541,11 @@ void common_hal_audioio_audioout_deinit(audioio_audioout_obj_t *self) {
     }
     dac_continuous_disable(self->handle);
     dac_continuous_del_channels(self->handle);
+    if (self->scratch_buffer != NULL) {
+        free(self->scratch_buffer);
+        self->scratch_buffer = NULL;
+        self->scratch_buffer_size = 0;
+    }
     self->handle = NULL;
     _active_handle = NULL;
 }
